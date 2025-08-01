@@ -7,6 +7,7 @@ const sGitee = document.getElementById("gitee");
 const sZhihu = document.getElementById('zhihu');
 const sJd = document.getElementById('jd');
 const sTaoBao = document.getElementById('taobao');
+const s1688 = document.getElementById('1688');
 const sYouTube = document.getElementById('youtube')
 const sBilibili = document.getElementById("bilibili");
 const sYingshi = document.getElementById("yingshi");
@@ -129,7 +130,13 @@ sTaoBao.onclick =function () {
     s='https://s.taobao.com/';
     doAction(p,n,s);
 }
-
+//1688
+s1688.onclick =function () {
+    p='https://www.1688.com/zw/page.html?hpageId=old-sem-pc-list&keywords=';
+    n='';
+    s='https://www.1688.com/';
+    doAction(p,n,s);
+}
 //YouTube
 sYouTube.onclick =function () {
     p='https://www.youtube.com/results?search_query=';
