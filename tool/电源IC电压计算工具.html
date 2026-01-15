@@ -1,0 +1,870 @@
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电源IC电压计算工具 | Angus</title>
+    <!-- 外部资源 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b',
+                        success: '#10b981',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                        info: '#06b6d4',
+                        light: '#f3f4f6',
+                        dark: '#1f2937',
+                        angus: '#2563eb' // Angus专属深蓝色（专业且易识别）
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                        'card-hover': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- 自定义工具类 -->
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto { content-visibility: auto; }
+            .transition-all-300 { transition: all 0.3s ease; }
+            .input-focus {
+                @apply focus:ring-2 focus:ring-primary focus:border-primary focus:outline-none;
+            }
+            .btn {
+                @apply px-4 py-2 rounded-md font-medium transition-all-300 focus:outline-none focus:ring-2 focus:ring-offset-2;
+            }
+            .btn-primary {
+                @apply bg-primary text-white hover:bg-blue-600 focus:ring-blue-500;
+            }
+            .btn-outline {
+                @apply border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500;
+            }
+            .card {
+                @apply bg-white rounded-lg shadow-card p-6 transition-all-300 hover:shadow-card-hover;
+            }
+            .form-label {
+                @apply block text-sm font-medium text-gray-700 mb-1;
+            }
+            .form-input {
+                @apply w-full px-3 py-2 border border-gray-300 rounded-md input-focus;
+            }
+            .form-select {
+                @apply w-full px-3 py-2 border border-gray-300 rounded-md input-focus;
+            }
+            .form-group {
+                @apply mb-4;
+            }
+            .result-value {
+                @apply text-2xl font-bold text-primary;
+            }
+            .formula {
+                @apply bg-gray-50 p-3 rounded-md font-mono text-sm my-2 overflow-x-auto;
+            }
+            .input-disabled {
+                @apply bg-gray-50 cursor-not-allowed text-gray-500;
+            }
+            .angus-signature {
+                @apply text-angus font-medium;
+            }
+            /* 新增：电压偏差标识样式 */
+            .vout-higher {
+                @apply text-orange-600 font-medium;
+            }
+            .vout-lower {
+                @apply text-blue-600 font-medium;
+            }
+            .vout-perfect {
+                @apply text-success font-medium;
+            }
+            /* 新增：实际电压说明样式 */
+            .actual-vout-note {
+                @apply mt-3 text-sm text-gray-700 bg-blue-50 p-2 rounded-md;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- 页面标题 - Angus标识 -->
+        <header class="text-center mb-8 relative">
+            <!-- Angus 角标（已移除"出品"二字） -->
+            <div class="absolute top-0 right-0 md:right-8 bg-angus/10 text-angus px-3 py-1 rounded-full text-sm font-medium">
+                <i class="fa fa-star mr-1"></i>Angus
+            </div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">
+                电源IC电压计算工具
+                <span class="angus-signature text-xl ml-2">| Angus</span>
+            </h1>
+            <p class="text-gray-600">用于计算开关电源电路中的反馈电压、输出电压和电阻值</p>
+        </header>
+
+        <!-- 主内容区 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- 左侧：计算表单 -->
+            <div class="card">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">计算参数</h2>
+                
+                <!-- 计算说明 -->
+                <div class="form-group mb-6">
+                    <div class="bg-blue-50 p-4 rounded-md border border-blue-200">
+                        <h3 class="text-blue-800 font-medium mb-2">计算说明</h3>
+                        <p class="text-blue-700 text-sm">
+                            请输入任意三个参数的值，系统将自动计算第四个参数。所有字段都可以输入，未输入的字段将被视为需要计算的参数。<br>
+                            <strong>输入规则：</strong>电压框仅允许数字和小数点；电阻框允许数字、小数点、K/M（大小写均可），禁止其他特殊符号。
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 输入表单 -->
+                <form id="calculator-form">
+                    <!-- Vout 输入 -->
+                    <div id="vout-group" class="form-group">
+                        <label for="vout" class="form-label">输出电压 (Vout)：</label>
+                        <div class="relative">
+                            <input 
+                                type="text" 
+                                id="vout" 
+                                class="form-input pr-8" 
+                                placeholder="例如：5.00" 
+                                data-type="voltage"
+                            >
+                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <span class="text-gray-500">V</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- VFB 输入 -->
+                    <div id="vfb-group" class="form-group">
+                        <label for="vfb" class="form-label">反馈电压 (VFB)：</label>
+                        <div class="relative">
+                            <input 
+                                type="text" 
+                                id="vfb" 
+                                class="form-input pr-8" 
+                                placeholder="例如：0.80" 
+                                data-type="voltage"
+                            >
+                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <span class="text-gray-500">V</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RH 输入 -->
+                    <div id="rh-group" class="form-group">
+                        <label for="rh" class="form-label">上电阻 (RH)：</label>
+                        <div class="relative">
+                            <input 
+                                type="text" 
+                                id="rh" 
+                                class="form-input pr-8" 
+                                placeholder="例如：10000.00 或 10K" 
+                                data-type="resistance"
+                            >
+                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <span class="text-gray-500">Ω</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RL 输入 -->
+                    <div id="rl-group" class="form-group">
+                        <label for="rl" class="form-label">下电阻 (RL)：</label>
+                        <div class="relative">
+                            <input 
+                                type="text" 
+                                id="rl" 
+                                class="form-input pr-8" 
+                                placeholder="例如：2000.00 或 2K" 
+                                data-type="resistance"
+                            >
+                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <span class="text-gray-500">Ω</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="mt-6 space-y-4">
+                        <button type="submit" class="btn btn-primary w-full">
+                            <i class="fa fa-calculator mr-2"></i>计算
+                        </button>
+                        <button id="recommend-resistors" type="button" class="btn btn-outline w-full" disabled>
+                            <i class="fa fa-lightbulb-o mr-2"></i>推荐1%标准电阻值
+                        </button>
+                        <button id="reset-form" type="button" class="btn btn-outline w-full">
+                            <i class="fa fa-refresh mr-2"></i>重置参数
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 右侧：结果显示和电路示意图 -->
+            <div>
+                <!-- 结果显示卡片 -->
+                <div class="card mb-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">计算结果</h2>
+                    <div id="result-container" class="hidden">
+                        <div id="result-content"></div>
+                        <div id="formula-display" class="formula mt-4"></div>
+                    </div>
+                    <div id="result-placeholder" class="text-center py-8 text-gray-500">
+                        <i class="fa fa-calculator fa-3x mb-3"></i>
+                        <p>请输入参数并点击计算按钮</p>
+                    </div>
+                </div>
+
+                <!-- 电路示意图卡片 -->
+                <div class="card">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">电路示意图</h2>
+                    <div class="flex justify-center">
+                        <img 
+                            src="https://p11-flow-imagex-download-sign.byteimg.com/tos-cn-i-a9rns2rl98/6fbf02610ae24537a46e2725e08d97c5.png~tplv-a9rns2rl98-24:720:720.png?lk3s=8e244e95&rcl=20260115165649A09C4810F8B360AC9D96&rrcfp=8a172a1a&x-expires=1769072209&x-signature=%2FmoTARKb6wHHMVmQkp3K3r7WNds%3D" 
+                            alt="电源IC反馈电路示意图" 
+                            class="max-w-full h-auto rounded-md"
+                            loading="lazy"
+                        >
+                    </div>
+                    <div class="mt-4">
+                        <p class="text-sm text-gray-600">
+                            该电路示意图展示了电源IC中的反馈电压分压电路，包含输出电压(Vout)、反馈电压(VFB)、电阻(RH)和电阻(RL)。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 使用说明和公式解释 -->
+        <div class="mt-8 card">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">使用说明</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-lg font-medium text-gray-800 mb-2">如何使用</h3>
+                    <ol class="list-decimal list-inside space-y-2 text-gray-700">
+                        <li>输入任意三个参数的值（支持K/M等单位缩写，禁止其他特殊符号）</li>
+                        <li>系统自动识别并禁用第四个待计算参数的输入框</li>
+                        <li>点击"计算"按钮或输入三个参数后自动查看结果</li>
+                        <li>可点击"推荐电阻"获取1%精度的标准电阻组合</li>
+                        <li>点击"重置参数"可清空所有输入并恢复初始状态</li>
+                    </ol>
+                </div>
+                <div>
+                    <h3 class="text-lg font-medium text-gray-800 mb-2">公式说明</h3>
+                    <p class="text-gray-700 mb-2">核心计算公式：</p>
+                    <div class="formula">VFB = Vout × (RL / (RH + RL))</div>
+                    <p class="text-sm text-gray-600 mt-2">
+                        该公式用于计算开关电源电路中的反馈电压(VFB)，通过调整上电阻(RH)和下电阻(RL)的比值，可以设置不同的输出电压(Vout)。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页脚 - Angus签名信息 -->
+        <footer class="mt-8 text-center">
+            <div class="bg-angus/5 rounded-lg p-4 mb-4">
+                <p class="angus-signature text-lg font-medium mb-1">
+                    <i class="fa fa-code mr-2"></i>Angus
+                </p>
+                <p class="text-gray-600 text-sm">专注于电子工程工具开发 | 精准 · 高效 · 易用</p>
+            </div>
+            <p class="text-gray-500 text-sm">© 2026 电源IC电压计算工具 | 设计用于电子工程师和电路设计人员</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript 逻辑（核心修改：1.修复实际输出电压计算精度 2.推荐电阻按电压上下接近排序） -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // ====================== 常量定义 ======================
+            // E-96系列1%标准电阻值（提前定义，避免重复创建）
+            const STANDARD_RESISTORS = [
+                // 1K-10K
+                1000, 1020, 1050, 1070, 1100, 1130, 1150, 1180, 1210, 1240, 1270, 1300,
+                1330, 1370, 1400, 1430, 1470, 1500, 1540, 1580, 1620, 1650, 1690, 1740,
+                1780, 1820, 1870, 1910, 1960, 2000, 2050, 2100, 2150, 2210, 2260, 2320,
+                2370, 2430, 2490, 2550, 2610, 2670, 2740, 2800, 2870, 2940, 3010, 3090,
+                3160, 3240, 3320, 3400, 3480, 3570, 3650, 3740, 3830, 3920, 4020, 4120,
+                4220, 4320, 4420, 4530, 4640, 4750, 4870, 4990, 5110, 5230, 5360, 5490,
+                5620, 5760, 5900, 6040, 6190, 6340, 6490, 6650, 6810, 6980, 7150, 7320,
+                7500, 7680, 7870, 8060, 8250, 8450, 8660, 8870, 9090, 9310, 9530, 9760,
+                // 10K-100K
+                10000, 10200, 10500, 10700, 11000, 11300, 11500, 11800, 12100, 12400, 12700, 13000,
+                13300, 13700, 14000, 14300, 14700, 15000, 15400, 15800, 16200, 16500, 16900, 17400,
+                17800, 18200, 18700, 19100, 19600, 20000, 20500, 21000, 21500, 22100, 22600, 23200,
+                23700, 24300, 24900, 25500, 26100, 26700, 27400, 28000, 28700, 29400, 30100, 30900,
+                31600, 32400, 33200, 34000, 34800, 35700, 36500, 37400, 38300, 39200, 40200, 41200,
+                42200, 43200, 44200, 45300, 46400, 47500, 48700, 49900, 51100, 52300, 53600, 54900,
+                56200, 57600, 59000, 60400, 61900, 63400, 64900, 66500, 68100, 69800, 71500, 73200,
+                75000, 76800, 78700, 80600, 82500, 84500, 86600, 88700, 90900, 93100, 95300, 97600,
+                // 100K-1M
+                100000, 102000, 105000, 107000, 110000, 113000, 115000, 118000, 121000, 124000, 127000, 130000,
+                133000, 137000, 140000, 143000, 147000, 150000, 154000, 158000, 162000, 165000, 169000, 174000,
+                178000, 182000, 187000, 191000, 196000, 200000, 205000, 210000, 215000, 221000, 226000, 232000,
+                237000, 243000, 249000, 255000, 261000, 267000, 274000, 280000, 287000, 294000, 301000, 309000,
+                316000, 324000, 332000, 340000, 348000, 357000, 365000, 374000, 383000, 392000, 402000, 412000,
+                422000, 432000, 442000, 453000, 464000, 475000, 487000, 499000, 511000, 523000, 536000, 549000,
+                562000, 576000, 590000, 604000, 619000, 634000, 649000, 665000, 681000, 698000, 715000, 732000,
+                750000, 768000, 787000, 806000, 825000, 845000, 866000, 887000, 909000, 931000, 953000, 976000
+            ];
+
+            // ====================== DOM 元素缓存 ======================
+            const dom = {
+                form: document.getElementById('calculator-form'),
+                resultContainer: document.getElementById('result-container'),
+                resultContent: document.getElementById('result-content'),
+                formulaDisplay: document.getElementById('formula-display'),
+                resultPlaceholder: document.getElementById('result-placeholder'),
+                recommendBtn: document.getElementById('recommend-resistors'),
+                resetBtn: document.getElementById('reset-form'),
+                inputs: {
+                    vout: document.getElementById('vout'),
+                    vfb: document.getElementById('vfb'),
+                    rh: document.getElementById('rh'),
+                    rl: document.getElementById('rl')
+                }
+            };
+
+            // ====================== 工具函数 ======================
+            /**
+             * 过滤非法字符（核心新增函数）
+             * @param {string} value 输入值
+             * @param {string} type 输入类型：voltage/resistance
+             * @returns {string} 过滤后的合法值
+             */
+            function filterIllegalCharacters(value, type) {
+                if (!value) return '';
+                
+                if (type === 'voltage') {
+                    // 电压输入：仅保留数字和小数点，且小数点只能有一个
+                    let filtered = value.replace(/[^0-9.]/g, '');
+                    // 确保只有一个小数点
+                    const dotIndex = filtered.indexOf('.');
+                    if (dotIndex !== -1) {
+                        filtered = filtered.substring(0, dotIndex + 1) + 
+                                   filtered.substring(dotIndex + 1).replace(/\./g, '');
+                    }
+                    return filtered;
+                } else if (type === 'resistance') {
+                    // 电阻输入：保留数字、小数点、K/M（大小写），且小数点只能有一个
+                    let filtered = value.replace(/[^0-9.KMkm]/g, '').toUpperCase();
+                    // 确保只有一个小数点
+                    const dotIndex = filtered.indexOf('.');
+                    if (dotIndex !== -1) {
+                        filtered = filtered.substring(0, dotIndex + 1) + 
+                                   filtered.substring(dotIndex + 1).replace(/\./g, '');
+                    }
+                    // 确保K/M只能出现在末尾（最多一个）
+                    const kmIndex = filtered.indexOf('K');
+                    const mIndex = filtered.indexOf('M');
+                    if (kmIndex !== -1 || mIndex !== -1) {
+                        const lastChar = filtered.slice(-1);
+                        if (lastChar !== 'K' && lastChar !== 'M') {
+                            // 如果K/M不在末尾，移除所有K/M
+                            filtered = filtered.replace(/[KM]/g, '');
+                        } else {
+                            // 如果K/M在末尾，确保前面只有数字和小数点
+                            filtered = filtered.slice(0, -1).replace(/[^0-9.]/g, '') + lastChar;
+                        }
+                    }
+                    return filtered;
+                }
+                return value;
+            }
+
+            /**
+             * 解析输入值（支持K/M单位，过滤非法字符）
+             * @param {string} value 输入值
+             * @returns {number} 解析后的数值（欧姆/伏特）
+             */
+            function parseInputValue(value) {
+                if (!value || value.trim() === '') return 0;
+                
+                // 过滤非数字/单位字符（仅保留数字、小数点、K/M）
+                const cleanValue = String(value).trim().toUpperCase().replace(/[^0-9.KM]/g, '');
+                if (!cleanValue) return 0;
+
+                // 处理单位转换
+                if (cleanValue.endsWith('K')) {
+                    return parseFloat(cleanValue.slice(0, -1)) * 1000 || 0;
+                } else if (cleanValue.endsWith('M')) {
+                    return parseFloat(cleanValue.slice(0, -1)) * 1000000 || 0;
+                } else {
+                    return parseFloat(cleanValue) || 0;
+                }
+            }
+
+            /**
+             * 格式化数值显示（自动适配单位）
+             * @param {number} value 数值
+             * @param {string} type 类型：voltage/resistance
+             * @returns {object} { value: 格式化后数值, unit: 单位, actualValue: 实际欧姆/伏特值 }
+             */
+            function formatDisplayValue(value, type) {
+                if (type === 'voltage') {
+                    const formatted = value.toFixed(3);
+                    return { 
+                        value: formatted, 
+                        unit: 'V',
+                        actualValue: parseFloat(formatted)
+                    };
+                }
+                
+                // 电阻单位适配
+                let formattedVal, unit, actualValue;
+                if (value >= 1000000) {
+                    formattedVal = (value / 1000000).toFixed(2);
+                    unit = 'MΩ';
+                    actualValue = parseFloat(formattedVal) * 1000000;
+                } else if (value >= 1000) {
+                    formattedVal = (value / 1000).toFixed(2);
+                    unit = 'kΩ';
+                    actualValue = parseFloat(formattedVal) * 1000;
+                } else {
+                    formattedVal = value.toFixed(0);
+                    unit = 'Ω';
+                    actualValue = parseFloat(formattedVal);
+                }
+                
+                return { 
+                    value: formattedVal, 
+                    unit: unit,
+                    actualValue: actualValue // 格式化后对应的实际欧姆值
+                };
+            }
+
+            /**
+             * 显示提示信息
+             * @param {string} message 提示内容
+             * @param {string} type 类型：success/warning/danger/info
+             */
+            function showMessage(message, type = 'info') {
+                const iconMap = {
+                    success: 'fa-check-circle',
+                    warning: 'fa-info-circle',
+                    danger: 'fa-exclamation-circle',
+                    info: 'fa-info-circle'
+                };
+                const colorMap = {
+                    success: 'text-success',
+                    warning: 'text-warning',
+                    danger: 'text-danger',
+                    info: 'text-info'
+                };
+
+                dom.resultContainer.classList.remove('hidden');
+                dom.resultPlaceholder.classList.add('hidden');
+                
+                dom.resultContent.innerHTML = `
+                    <div class="flex items-center ${colorMap[type]}">
+                        <i class="fa ${iconMap[type]} mr-2"></i>
+                        <span>${message}</span>
+                    </div>
+                `;
+                dom.formulaDisplay.textContent = '';
+            }
+
+            // ====================== 核心逻辑函数 ======================
+            /**
+             * 确定需要计算的参数类型
+             * @returns {string|null} vout/vfb/rh/rl / null
+             */
+            function determineCalculationType() {
+                const values = {
+                    vout: parseInputValue(dom.inputs.vout.value),
+                    vfb: parseInputValue(dom.inputs.vfb.value),
+                    rh: parseInputValue(dom.inputs.rh.value),
+                    rl: parseInputValue(dom.inputs.rl.value)
+                };
+
+                // 统计非零输入数量
+                const nonZeroCount = Object.values(values).filter(val => val > 0).length;
+                if (nonZeroCount !== 3) return null;
+
+                // 找到待计算的参数
+                for (const [key, val] of Object.entries(values)) {
+                    if (val === 0) return key;
+                }
+                return null;
+            }
+
+            /**
+             * 更新输入框状态（禁用待计算的参数）
+             */
+            function updateInputStates() {
+                const calcType = determineCalculationType();
+                
+                // 重置所有输入框状态
+                Object.values(dom.inputs).forEach(input => {
+                    input.disabled = false;
+                    input.classList.remove('input-disabled');
+                });
+
+                // 禁用待计算的输入框
+                if (calcType && dom.inputs[calcType]) {
+                    dom.inputs[calcType].disabled = true;
+                    dom.inputs[calcType].classList.add('input-disabled');
+                }
+
+                // 启用/禁用推荐电阻按钮
+                const vout = parseInputValue(dom.inputs.vout.value);
+                const vfb = parseInputValue(dom.inputs.vfb.value);
+                dom.recommendBtn.disabled = !(vout > 0 && vfb > 0);
+            }
+
+            /**
+             * 执行核心计算逻辑（修复实际输出电压计算精度）
+             */
+            function calculate() {
+                const calcType = determineCalculationType();
+                if (!calcType) {
+                    showMessage('请输入任意三个有效的参数值，系统将自动计算第四个参数', 'warning');
+                    return;
+                }
+
+                // 获取解析后的输入值
+                const values = {
+                    vout: parseInputValue(dom.inputs.vout.value),
+                    vfb: parseInputValue(dom.inputs.vfb.value),
+                    rh: parseInputValue(dom.inputs.rh.value),
+                    rl: parseInputValue(dom.inputs.rl.value)
+                };
+
+                try {
+                    let result, formula, label, type, actualVoutNote = '';
+                    const { vout, vfb, rh, rl } = values;
+
+                    // 根据计算类型执行计算
+                    switch (calcType) {
+                        case 'vfb':
+                            if (vout <= 0 || rh <= 0 || rl <= 0) throw new Error('Vout、RH、RL 必须为正数');
+                            result = vout * (rl / (rh + rl));
+                            formula = `VFB = Vout × (RL / (RH + RL)) = ${vout}V × (${rl}Ω / (${rh}Ω + ${rl}Ω)) = ${result.toFixed(2)}V`;
+                            label = '反馈电压 (VFB)';
+                            type = 'voltage';
+                            break;
+
+                        case 'vout':
+                            if (vfb <= 0 || rh <= 0 || rl <= 0) throw new Error('VFB、RH、RL 必须为正数');
+                            result = vfb * (rh + rl) / rl;
+                            formula = `Vout = VFB × ((RH + RL) / RL) = ${vfb}V × ((${rh}Ω + ${rl}Ω) / ${rl}Ω) = ${result.toFixed(2)}V`;
+                            label = '输出电压 (Vout)';
+                            type = 'voltage';
+                            break;
+
+                        case 'rh':
+                            if (vout <= 0 || vfb <= 0 || rl <= 0) throw new Error('Vout、VFB、RL 必须为正数');
+                            if (vout <= vfb) throw new Error('Vout 必须大于 VFB');
+                            result = rl * (vout / vfb - 1);
+                            // 格式化计算结果（获取显示用的电阻值和实际欧姆值）
+                            const rhFormatted = formatDisplayValue(result, 'resistance');
+                            formula = `RH = RL × (Vout / VFB - 1) = ${rl}Ω × (${vout}V / ${vfb}V - 1) = ${rhFormatted.value}${rhFormatted.unit}`;
+                            label = '上电阻 (RH)';
+                            type = 'resistance';
+                            // 计算该电阻值（格式化后）对应的实际输出电压
+                            const actualVoutRH = vfb * (rhFormatted.actualValue + rl) / rl;
+                            actualVoutNote = `
+                                <div class="actual-vout-note">
+                                    <i class="fa fa-info-circle mr-1 text-info"></i>
+                                    使用该电阻值时，实际输出电压为：<strong>${actualVoutRH.toFixed(3)}V</strong>
+                                </div>
+                            `;
+                            break;
+
+                        case 'rl':
+                            if (vout <= 0 || vfb <= 0 || rh <= 0) throw new Error('Vout、VFB、RH 必须为正数');
+                            if (vout <= vfb) throw new Error('Vout 必须大于 VFB');
+                            result = rh / (vout / vfb - 1);
+                            // 格式化计算结果（获取显示用的电阻值和实际欧姆值）
+                            const rlFormatted = formatDisplayValue(result, 'resistance');
+                            formula = `RL = RH / (Vout / VFB - 1) = ${rh}Ω / (${vout}V / ${vfb}V - 1) = ${rlFormatted.value}${rlFormatted.unit}`;
+                            label = '下电阻 (RL)';
+                            type = 'resistance';
+                            // 计算该电阻值（格式化后）对应的实际输出电压
+                            const actualVoutRL = vfb * (rh + rlFormatted.actualValue) / rlFormatted.actualValue;
+                            actualVoutNote = `
+                                <div class="actual-vout-note">
+                                    <i class="fa fa-info-circle mr-1 text-info"></i>
+                                    使用该电阻值时，实际输出电压为：<strong>${actualVoutRL.toFixed(3)}V</strong>
+                                </div>
+                            `;
+                            break;
+
+                        default:
+                            throw new Error('无法识别的计算类型');
+                    }
+
+                    // 格式化结果显示
+                    const formattedResult = formatDisplayValue(result, type);
+                    
+                    // 渲染计算结果
+                    dom.resultContainer.classList.remove('hidden');
+                    dom.resultPlaceholder.classList.add('hidden');
+                    
+                    dom.resultContent.innerHTML = `
+                        <div class="mb-2">
+                            <span class="text-gray-700">计算结果：</span>
+                        </div>
+                        <div class="flex items-baseline">
+                            <span class="text-gray-700 mr-2">${label} =</span>
+                            <span class="result-value">${formattedResult.value}</span>
+                            <span class="text-gray-700 ml-1">${formattedResult.unit}</span>
+                        </div>
+                        ${actualVoutNote}
+                    `;
+                    dom.formulaDisplay.textContent = formula;
+
+                } catch (error) {
+                    showMessage(error.message, 'danger');
+                }
+            }
+
+            /**
+             * 推荐1%标准电阻组合（按电压上下接近推荐）
+             */
+            function recommendStandardResistors() {
+                const targetVout = parseInputValue(dom.inputs.vout.value);
+                const vfb = parseInputValue(dom.inputs.vfb.value);
+
+                if (targetVout <= 0 || vfb <= 0) {
+                    showMessage('请输入有效的输出电压(Vout)和反馈电压(VFB)值', 'danger');
+                    return;
+                }
+                if (targetVout <= vfb) {
+                    showMessage('输出电压(Vout)必须大于反馈电压(VFB)', 'danger');
+                    return;
+                }
+
+                // 计算理想电阻比值
+                const idealRatio = targetVout / vfb - 1;
+
+                // 查找所有可能的电阻组合
+                const allMatches = [];
+                for (const rl of STANDARD_RESISTORS) {
+                    const idealRh = rl * idealRatio;
+                    // 找到最接近的标准RH值
+                    const closestRh = STANDARD_RESISTORS.reduce((prev, curr) => {
+                        return Math.abs(curr - idealRh) < Math.abs(prev - idealRh) ? curr : prev;
+                    });
+
+                    // 计算实际参数
+                    const actualRatio = closestRh / rl;
+                    const actualVout = vfb * (1 + actualRatio);
+                    const voutError = Math.abs(actualVout - targetVout) / targetVout * 100;
+                    const voutDiff = actualVout - targetVout; // 差值（正=偏高，负=偏低）
+
+                    allMatches.push({
+                        rh: closestRh,
+                        rl: rl,
+                        ratio: actualRatio,
+                        vout: actualVout,
+                        voutError: voutError,
+                        voutDiff: voutDiff,
+                        absDiff: Math.abs(voutDiff) // 绝对差值
+                    });
+                }
+
+                // 去重
+                const uniqueMatches = allMatches.filter((item, index, self) => {
+                    const key = `${item.rh}/${item.rl}`;
+                    return self.findIndex(i => `${i.rh}/${i.rl}` === key) === index;
+                });
+
+                // 筛选误差较小的候选集（误差<5%）
+                const candidates = uniqueMatches.filter(match => match.voutError < 5);
+                
+                if (candidates.length === 0) {
+                    showMessage('未找到合适的标准电阻组合，请调整参数重试', 'warning');
+                    return;
+                }
+
+                // 分类筛选：最接近、略高、略低
+                const bestMatch = candidates.reduce((prev, curr) => {
+                    return curr.absDiff < prev.absDiff ? curr : prev;
+                });
+
+                // 略高的组合（差值>0，且接近目标）
+                const higherMatches = candidates
+                    .filter(match => match.voutDiff > 0 && match !== bestMatch)
+                    .sort((a, b) => a.absDiff - b.absDiff)
+                    .slice(0, 2);
+
+                // 略低的组合（差值<0，且接近目标）
+                const lowerMatches = candidates
+                    .filter(match => match.voutDiff < 0 && match !== bestMatch)
+                    .sort((a, b) => a.absDiff - b.absDiff)
+                    .slice(0, 2);
+
+                // 组合最终推荐列表（确保总数为5）
+                let recommendedMatches = [bestMatch];
+                recommendedMatches = recommendedMatches.concat(higherMatches, lowerMatches);
+                
+                // 如果数量不足，补充误差最小的组合
+                if (recommendedMatches.length < 5) {
+                    const remainingNeeded = 5 - recommendedMatches.length;
+                    const otherMatches = candidates
+                        .filter(match => !recommendedMatches.includes(match))
+                        .sort((a, b) => a.absDiff - b.absDiff)
+                        .slice(0, remainingNeeded);
+                    recommendedMatches = recommendedMatches.concat(otherMatches);
+                }
+
+                // 最终取前5个
+                recommendedMatches = recommendedMatches.slice(0, 5);
+
+                // 渲染推荐结果
+                dom.resultContainer.classList.remove('hidden');
+                dom.resultPlaceholder.classList.add('hidden');
+
+                // 生成表格HTML（新增电压偏差标识）
+                const tableHtml = `
+                    <div class="mb-4">
+                        <h3 class="text-lg font-medium text-gray-800 mb-2">推荐的E-96系列1%标准电阻组合（按电压接近度）：</h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead>
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">RH</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">RL</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">RH/RL比值</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">实际Vout (V)</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">与目标偏差</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">误差 (%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    ${recommendedMatches.map(match => {
+                                        const rhFormatted = formatDisplayValue(match.rh, 'resistance');
+                                        const rlFormatted = formatDisplayValue(match.rl, 'resistance');
+                                        const voutFormatted = match.vout.toFixed(3);
+                                        const diffFormatted = match.voutDiff.toFixed(3);
+                                        
+                                        // 确定电压偏差样式类
+                                        let voutClass = '';
+                                        let diffLabel = '';
+                                        if (Math.abs(match.voutDiff) < 0.001) {
+                                            voutClass = 'vout-perfect';
+                                            diffLabel = '±0.000';
+                                        } else if (match.voutDiff > 0) {
+                                            voutClass = 'vout-higher';
+                                            diffLabel = `+${diffFormatted}`;
+                                        } else {
+                                            voutClass = 'vout-lower';
+                                            diffLabel = diffFormatted;
+                                        }
+                                        
+                                        const errorClass = match.voutError < 0.5 ? 'text-success font-medium' : '';
+                                        
+                                        return `
+                                            <tr>
+                                                <td class="px-4 py-2 whitespace-nowrap font-medium">${rhFormatted.value} ${rhFormatted.unit}</td>
+                                                <td class="px-4 py-2 whitespace-nowrap font-medium">${rlFormatted.value} ${rlFormatted.unit}</td>
+                                                <td class="px-4 py-2 whitespace-nowrap">${match.ratio.toFixed(4)}</td>
+                                                <td class="px-4 py-2 whitespace-nowrap ${voutClass}">${voutFormatted}</td>
+                                                <td class="px-4 py-2 whitespace-nowrap ${voutClass}">${diffLabel}</td>
+                                                <td class="px-4 py-2 whitespace-nowrap ${errorClass}">${match.voutError.toFixed(2)}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="bg-blue-50 p-3 rounded-md text-sm text-blue-800">
+                        <p><i class="fa fa-info-circle mr-1"></i> 推荐结果包含：<span class="vout-perfect">最接近目标值</span>、<span class="vout-higher">略高于目标值</span>、<span class="vout-lower">略低于目标值</span>的组合（理想比值: ${idealRatio.toFixed(4)}，目标Vout: ${targetVout.toFixed(3)}V）。</p>
+                    </div>
+                `;
+
+                dom.resultContent.innerHTML = tableHtml;
+                dom.formulaDisplay.textContent = `理想比值: RH/RL = ${idealRatio.toFixed(4)} | 目标输出电压: ${targetVout.toFixed(3)}V`;
+            }
+
+            /**
+             * 重置表单
+             */
+            function resetForm() {
+                // 清空输入框
+                Object.values(dom.inputs).forEach(input => {
+                    input.value = '';
+                    input.disabled = false;
+                    input.classList.remove('input-disabled');
+                });
+
+                // 重置结果显示
+                dom.resultContainer.classList.add('hidden');
+                dom.resultPlaceholder.classList.remove('hidden');
+                dom.resultContent.innerHTML = '';
+                dom.formulaDisplay.textContent = '';
+
+                // 禁用推荐按钮
+                dom.recommendBtn.disabled = true;
+            }
+
+            // ====================== 事件监听 ======================
+            // 表单提交
+            dom.form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                calculate();
+            });
+
+            // 输入框实时监听（过滤特殊符号）
+            Object.values(dom.inputs).forEach(input => {
+                // 实时过滤非法字符
+                input.addEventListener('input', function() {
+                    const inputType = this.getAttribute('data-type');
+                    const originalValue = this.value;
+                    const filteredValue = filterIllegalCharacters(originalValue, inputType);
+                    
+                    // 如果值有变化，更新输入框并保持光标位置
+                    if (originalValue !== filteredValue) {
+                        const cursorPos = this.selectionStart;
+                        this.value = filteredValue;
+                        // 恢复光标位置（适配删除非法字符的情况）
+                        this.selectionStart = this.selectionEnd = Math.min(cursorPos, filteredValue.length);
+                    }
+                    
+                    updateInputStates();
+                    // 输入三个参数时自动计算
+                    if (determineCalculationType()) {
+                        calculate();
+                    }
+                });
+
+                // 阻止粘贴非法字符
+                input.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    const inputType = this.getAttribute('data-type');
+                    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                    const filteredText = filterIllegalCharacters(pastedText, inputType);
+                    if (filteredText) {
+                        this.value += filteredText;
+                        updateInputStates();
+                    }
+                });
+            });
+
+            // 推荐电阻按钮
+            dom.recommendBtn.addEventListener('click', recommendStandardResistors);
+
+            // 重置按钮
+            dom.resetBtn.addEventListener('click', resetForm);
+
+            // 初始化状态
+            updateInputStates();
+        });
+    </script>
+</body>
+</html>
